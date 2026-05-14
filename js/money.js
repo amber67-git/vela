@@ -65,8 +65,10 @@ const CAT_COLORS = {
 
 export function setMoneyType(type) {
   moneyType = type;
-  $('btn-income') ?.className = `money-type-btn income ${type === 'income'  ? 'active' : ''}`;
-  $('btn-expense')?.className = `money-type-btn expense ${type === 'expense' ? 'active' : ''}`;
+  const btnInc = $('btn-income');
+  const btnExp = $('btn-expense');
+  if (btnInc) btnInc.className = `money-type-btn income ${type === 'income'  ? 'active' : ''}`;
+  if (btnExp) btnExp.className = `money-type-btn expense ${type === 'expense' ? 'active' : ''}`;
 }
 
 /* ─── CRUD ──────────────────────────────────────────────────────────── */
