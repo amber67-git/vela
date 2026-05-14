@@ -1,187 +1,527 @@
-/**
- * classes.js — Class / tuition tracker module
- *
- * Responsibilities:
- *   - Add / edit / delete classes
- *   - Grade tracking with weighted average
- *   - Tuition summary
- *   - Class card rendering
- */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Vela"/>
+  <meta name="theme-color" content="#f7f6f3"/>
+  <title>Vela</title>
 
-'use strict';
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 
-import { store } from './store.js';
-import { $ }     from './app.js';
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css"/>
 
-/* ─── Helpers ───────────────────────────────────────────────────────── */
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/base.css"/>
+  <link rel="stylesheet" href="css/components.css"/>
+  <link rel="stylesheet" href="css/pages.css"/>
+</head>
+<body>
 
-function formatCurrency(n) { return `₩${Math.abs(n).toLocaleString()}`; }
+<!-- ═══════════════════════════════════════════════════════════════════
+     NAVIGATION
+════════════════════════════════════════════════════════════════════ -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand"><i class="ti ti-sparkles"></i> Vela</div>
+    <button class="nav-tab active" onclick="window._app.showPage('dashboard')"><i class="ti ti-home"></i>     <span>Dashboard</span></button>
+    <button class="nav-tab"        onclick="window._app.showPage('diet')">     <i class="ti ti-salad"></i>    <span>Diet</span></button>
+    <button class="nav-tab"        onclick="window._app.showPage('workout')">  <i class="ti ti-heartbeat"></i><span>Workout</span></button>
+    <button class="nav-tab"        onclick="window._app.showPage('money')">    <i class="ti ti-wallet"></i>   <span>Money</span></button>
+    <button class="nav-tab"        onclick="window._app.showPage('classes')">  <i class="ti ti-school"></i>   <span>Classes</span></button>
+    <button class="nav-tab"        onclick="window._app.showPage('profile')">  <i class="ti ti-user-circle"></i><span>Profile</span></button>
+  </div>
+</nav>
 
-/**
- * Weighted average grade across all classes that have a grade.
- * Weight = credit hours.
- * @returns {string}  e.g. "87%" or "—"
- */
-export function getAvgGrade() {
-  const graded = store.classes.filter(c => c.grade && c.credits);
-  if (!graded.length) return '—';
-  const totalCredits   = graded.reduce((a, c) => a + c.credits, 0);
-  const weightedSum    = graded.reduce((a, c) => a + parseFloat(c.grade) * c.credits, 0);
-  return `${Math.round(weightedSum / totalCredits)}%`;
-}
 
-/** Grade → letter mapping. */
-function gradeToLetter(pct) {
-  const n = parseFloat(pct);
-  if (isNaN(n))  return '';
-  if (n >= 95)   return 'A+';
-  if (n >= 90)   return 'A';
-  if (n >= 85)   return 'B+';
-  if (n >= 80)   return 'B';
-  if (n >= 75)   return 'C+';
-  if (n >= 70)   return 'C';
-  if (n >= 65)   return 'D+';
-  if (n >= 60)   return 'D';
-  return 'F';
-}
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: DASHBOARD
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-dashboard" class="page active">
 
-/** CSS colour string based on grade percentage. */
-function gradeColor(pct) {
-  const n = parseFloat(pct);
-  if (isNaN(n))  return 'var(--text-3)';
-  if (n >= 80)   return 'var(--accent)';
-  if (n >= 70)   return 'var(--warn)';
-  return 'var(--danger)';
-}
+  <div class="hero">
+    <div class="hero-greeting" id="heroGreeting">Good morning</div>
+    <div class="hero-phrase"   id="heroPhrase">Every day is a fresh start — make this one count.</div>
+    <div class="hero-stats"    id="heroStats"></div>
+  </div>
 
-/* ─── CRUD ──────────────────────────────────────────────────────────── */
+  <div class="summary-grid" id="summaryGrid"></div>
 
-export function addClass() {
-  const name = $('cl-name')?.value.trim();
-  if (!name) { alert('Enter a class name'); return; }
+  <div class="split-3">
+    <div class="card">
+      <div class="card-title"><i class="ti ti-salad"     style="color:#22c55e"></i> Today's diet</div>
+      <div id="dash-diet"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><i class="ti ti-heartbeat" style="color:#ef4444"></i> Today's workout</div>
+      <div id="dash-workout"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><i class="ti ti-wallet"    style="color:#f59e0b"></i> Money summary</div>
+      <div id="dash-money"></div>
+    </div>
+  </div>
 
-  const obj = {
-    name,
-    credits:  parseInt($('cl-credits')?.value)  || 3,
-    color:    $('cl-color')?.value               || '#2d6a4f',
-    schedule: $('cl-schedule')?.value.trim()     || '',
-    room:     $('cl-room')?.value.trim()         || '',
-    prof:     $('cl-prof')?.value.trim()         || '',
-    grade:    $('cl-grade')?.value               || '',
-    tuition:  parseFloat($('cl-tuition')?.value) || 0,
-    notes:    $('cl-notes')?.value.trim()        || '',
-  };
+  <div class="card">
+    <div class="card-title"><i class="ti ti-school" style="color:#7c3aed"></i> Upcoming classes</div>
+    <div id="dash-classes"></div>
+  </div>
 
-  const idx = store.classes.findIndex(c => c.name === name);
-  if (idx >= 0) store.classes[idx] = obj;
-  else          store.classes.push(obj);
+</div><!-- /page-dashboard -->
 
-  store.persist('classes');
-  if ($('cl-name')) $('cl-name').value = '';
-  renderClasses();
-  window.dispatchEvent(new CustomEvent('classes:updated'));
-}
 
-export function editClass(name) {
-  const c = store.classes.find(x => x.name === name);
-  if (!c) return;
-  const set = (id, val) => { const e = $(id); if (e) e.value = val ?? ''; };
-  set('cl-name',     c.name);
-  set('cl-credits',  c.credits);
-  set('cl-color',    c.color);
-  set('cl-schedule', c.schedule);
-  set('cl-room',     c.room);
-  set('cl-prof',     c.prof);
-  set('cl-grade',    c.grade);
-  set('cl-tuition',  c.tuition || '');
-  set('cl-notes',    c.notes);
-  $('cl-name')?.focus();
-}
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: DIET
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-diet" class="page">
 
-export function deleteClass(name) {
-  if (!confirm(`Delete "${name}"?`)) return;
-  store.classes = store.classes.filter(c => c.name !== name);
-  store.persist('classes');
-  renderClasses();
-  window.dispatchEvent(new CustomEvent('classes:updated'));
-}
+  <!-- Hidden inputs keep goal values accessible to legacy code paths -->
+  <input type="hidden" id="calGoal" value="2000"/>
+  <input type="hidden" id="rCarb"   value="50"/>
+  <input type="hidden" id="rProt"   value="30"/>
+  <input type="hidden" id="rFat"    value="20"/>
 
-/* ─── Render ────────────────────────────────────────────────────────── */
+  <!-- Macro progress bar -->
+  <div class="macro-bar" id="macroBar"></div>
 
-export function renderClasses() {
-  // Summary stats
-  const totCredits = store.classes.reduce((a, c) => a + c.credits, 0);
-  const totTuition = store.classes.reduce((a, c) => a + c.tuition, 0);
+  <!-- Week nav + tab bar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
 
-  if ($('c-credits')) $('c-credits').textContent = totCredits;
-  if ($('c-avg'))     $('c-avg').textContent     = getAvgGrade();
-  if ($('c-tuition')) $('c-tuition').textContent = formatCurrency(totTuition);
+    <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface)">
+      <button style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:transparent;color:var(--text-2);cursor:pointer;border-right:1px solid var(--border)"
+              onclick="window._diet.shiftWeek(-1)">
+        <i class="ti ti-chevron-left"></i>
+      </button>
+      <div style="padding:0 14px;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;line-height:34px"
+           id="weekNavLabel"></div>
+      <button style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:transparent;color:var(--text-2);cursor:pointer;border-left:1px solid var(--border)"
+              onclick="window._diet.shiftWeek(1)">
+        <i class="ti ti-chevron-right"></i>
+      </button>
+    </div>
 
-  // Class cards
-  const list = $('c-list');
-  if (!list) return;
+    <div class="page-tabs">
+      <button class="page-tab active" id="tabMeals" onclick="window._diet.switchDietTab('meals')">
+        <i class="ti ti-calendar-week" style="font-size:13px;vertical-align:-1px;margin-right:4px"></i>Meal log
+      </button>
+      <button class="page-tab" id="tabWeek" onclick="window._diet.switchDietTab('week')">
+        <i class="ti ti-chart-bar" style="font-size:13px;vertical-align:-1px;margin-right:4px"></i>Week summary
+      </button>
+    </div>
 
-  if (!store.classes.length) {
-    list.innerHTML = `
-      <div class="empty-state">
-        <i class="ti ti-school"></i>
-        <p>No classes added yet</p>
-      </div>`;
-    return;
-  }
+  </div>
 
-  list.innerHTML = store.classes.map(c => {
-    const letter = gradeToLetter(c.grade);
-    const gColor = gradeColor(c.grade);
+  <!-- ── Meal log view ── -->
+  <div id="viewMeals">
+    <div class="split" id="mainLayout">
 
-    return `
-      <div class="class-card">
-        <div class="class-color-bar" style="background:${c.color}"></div>
-        <div class="class-info">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-            <div class="class-name">${c.name}</div>
-            ${c.grade ? `
-              <span class="badge" style="background:var(--surface-2);color:${gColor};font-size:12px">
-                ${c.grade}% ${letter ? `(${letter})` : ''}
-              </span>` : ''}
+      <!-- Left column: food library + calculator -->
+      <div id="leftCol" style="display:flex;flex-direction:column;gap:8px;min-width:0;position:sticky;top:64px">
+
+        <!-- Food library -->
+        <div class="food-panel" id="foodPanel">
+          <div class="panel-head">
+            Food library
+            <span class="panel-hint">drag to add</span>
           </div>
+          <input type="text" class="fsearch" id="foodSearch" placeholder="Search foods…"
+                 oninput="window._diet.onSearch(this.value)"/>
+          <div class="food-list" id="foodList"></div>
 
-          <div class="class-meta">
-            ${c.schedule ? `<span><i class="ti ti-clock" style="font-size:12px;vertical-align:-1px"></i> ${c.schedule}</span>&nbsp;&nbsp;` : ''}
-            ${c.room     ? `<span><i class="ti ti-door"  style="font-size:12px;vertical-align:-1px"></i> ${c.room}</span>&nbsp;&nbsp;`     : ''}
-            ${c.prof     ? `<span><i class="ti ti-user"  style="font-size:12px;vertical-align:-1px"></i> ${c.prof}</span>`                  : ''}
-          </div>
+          <!-- Add / Edit form -->
+          <div class="add-food-form" id="addFoodForm">
+            <div class="aff-title">Add custom food</div>
+            <div class="aff-note">Enter total amount eaten → auto-calculates per 100g</div>
 
-          ${c.grade ? `
-            <div class="progress-wrap" style="margin-bottom:6px">
-              <div class="progress-track">
-                <div class="progress-fill"
-                  style="width:${Math.min(100, parseFloat(c.grade))}%;background:${gColor}">
-                </div>
+            <div class="aff-row">
+              <span class="aff-label">Name</span>
+              <input class="aff-input" id="affName" type="text" placeholder="e.g. Ham"
+                     oninput="window._diet.onFoodNameInput(this.value)"/>
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Category</span>
+              <select class="aff-select" id="affCat">
+                <option value="meat">Meat &amp; Fish</option>
+                <option value="grains">Grains &amp; Carbs</option>
+                <option value="dairy">Eggs &amp; Dairy</option>
+                <option value="vegetables">Vegetables</option>
+                <option value="fruits">Fruits</option>
+                <option value="drinks">Drinks</option>
+                <option value="snacks">Snacks</option>
+                <option value="meals">Meals &amp; Dishes</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div style="font-size:11px;color:var(--text-3);margin:4px 0 2px;padding-left:62px">
+              Enter total amount eaten
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Amount</span>
+              <input class="aff-input" id="affAmt" type="number" min="1" placeholder="e.g. 300"
+                     oninput="window._diet.autoCalcPer100()"/>
+              <span style="font-size:11px;color:var(--text-3);margin-left:4px">g</span>
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Calories</span>
+              <input class="aff-input" id="affCalTotal" type="number" min="0" placeholder="total kcal"
+                     oninput="window._diet.autoCalcPer100()"/>
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Carbs</span>
+              <input class="aff-input" id="affCarbTotal" type="number" min="0" step="0.1" placeholder="total g"
+                     oninput="window._diet.autoCalcPer100()"/>
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Protein</span>
+              <input class="aff-input" id="affProtTotal" type="number" min="0" step="0.1" placeholder="total g"
+                     oninput="window._diet.autoCalcPer100()"/>
+            </div>
+            <div class="aff-row">
+              <span class="aff-label">Fat</span>
+              <input class="aff-input" id="affFatTotal" type="number" min="0" step="0.1" placeholder="total g"
+                     oninput="window._diet.autoCalcPer100()"/>
+            </div>
+
+            <!-- Live per-100g preview -->
+            <div class="per100-result" id="affPer100Result">
+              <div style="font-size:10px;color:var(--text-3);margin-bottom:5px">Per 100g:</div>
+              <div class="per100-grid">
+                <div><div id="r100Cal"  style="font-size:13px;font-weight:600;color:var(--text)">—</div><div style="font-size:10px;color:var(--text-3)">kcal</div></div>
+                <div><div id="r100Carb" style="font-size:13px;font-weight:600;color:#3b82f6">—</div><div style="font-size:10px;color:var(--text-3)">C</div></div>
+                <div><div id="r100Prot" style="font-size:13px;font-weight:600;color:#22c55e">—</div><div style="font-size:10px;color:var(--text-3)">P</div></div>
+                <div><div id="r100Fat"  style="font-size:13px;font-weight:600;color:#f59e0b">—</div><div style="font-size:10px;color:var(--text-3)">F</div></div>
               </div>
-            </div>` : ''}
+            </div>
 
-          ${c.notes ? `
-            <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">
-              <i class="ti ti-note" style="font-size:11px;vertical-align:-1px"></i> ${c.notes}
-            </div>` : ''}
+            <div class="aff-actions">
+              <button class="aff-cancel" onclick="window._diet.closeAddForm()">Cancel</button>
+              <button class="aff-save"   onclick="window._diet.saveFood()">Add to library</button>
+            </div>
+          </div><!-- /add-food-form -->
+        </div><!-- /food-panel -->
 
-          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-            <span style="font-size:11px;color:var(--text-3)">${c.credits} credit${c.credits !== 1 ? 's' : ''}</span>
-            ${c.tuition ? `<span class="badge badge-warn">${formatCurrency(c.tuition)}</span>` : ''}
-            <div style="margin-left:auto;display:flex;gap:4px">
-              <button class="btn-icon" onclick="window._classes.editClass('${c.name.replace(/'/g, "\\'")}')">
-                <i class="ti ti-pencil"></i>
-              </button>
-              <button class="btn-icon danger" onclick="window._classes.deleteClass('${c.name.replace(/'/g, "\\'")}')">
-                <i class="ti ti-trash"></i>
+        <!-- Per-100g calculator -->
+        <div class="calc-panel">
+          <div class="calc-head">Per 100g calculator</div>
+          <div class="calc-body">
+            <div style="font-size:11px;color:var(--text-3)">Enter total amount + nutrition values</div>
+            <div class="calc-row"><span class="calc-label">Amount</span>  <input class="calc-input" id="cAmt"  type="number" min="1"      placeholder="e.g. 300"/> <span class="calc-unit">g</span></div>
+            <div class="calc-row"><span class="calc-label">Calories</span><input class="calc-input" id="cCal"  type="number" min="0"      placeholder="kcal"/></div>
+            <div class="calc-row"><span class="calc-label">Carbs</span>   <input class="calc-input" id="cCarb" type="number" min="0" step="0.1" placeholder="g"/></div>
+            <div class="calc-row"><span class="calc-label">Protein</span> <input class="calc-input" id="cProt" type="number" min="0" step="0.1" placeholder="g"/></div>
+            <div class="calc-row"><span class="calc-label">Fat</span>     <input class="calc-input" id="cFat"  type="number" min="0" step="0.1" placeholder="g"/></div>
+            <button class="calc-btn" onclick="window._diet.runCalc()">Calculate per 100g</button>
+            <div class="calc-result" id="calcResult">
+              <div style="font-size:10px;color:var(--text-3);margin-bottom:5px">Per 100g:</div>
+              <div class="per100-grid">
+                <div><div id="rCal"  style="font-size:13px;font-weight:600;color:var(--text)">—</div><div style="font-size:10px;color:var(--text-3)">kcal</div></div>
+                <div><div id="rCarb" style="font-size:13px;font-weight:600;color:#3b82f6">—</div><div style="font-size:10px;color:var(--text-3)">C</div></div>
+                <div><div id="rProt" style="font-size:13px;font-weight:600;color:#22c55e">—</div><div style="font-size:10px;color:var(--text-3)">P</div></div>
+                <div><div id="rFat"  style="font-size:13px;font-weight:600;color:#f59e0b">—</div><div style="font-size:10px;color:var(--text-3)">F</div></div>
+              </div>
+              <button class="calc-use-btn" onclick="window._diet.useCalcResult()">
+                + Use these values when adding food
               </button>
             </div>
           </div>
-        </div>
-      </div>`;
-  }).join('');
-}
+        </div><!-- /calc-panel -->
 
-/* ─── Expose to inline handlers ────────────────────────────────────── */
-window._classes = { addClass, editClass, deleteClass };
+      </div><!-- /leftCol -->
+
+      <!-- Right column: meal grid -->
+      <div class="meal-grid" id="mealGrid"></div>
+
+    </div><!-- /split -->
+  </div><!-- /viewMeals -->
+
+  <!-- ── Week summary view ── -->
+  <div id="viewWeek" style="display:none">
+    <div id="weekPanel"></div>
+  </div>
+
+</div><!-- /page-diet -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: WORKOUT
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-workout" class="page">
+
+  <div class="stat-grid g4">
+    <div class="stat-card"><div class="stat-label">Time today</div>    <div class="stat-val"       id="s-time">0 <span style="font-size:14px;font-weight:400">min</span></div></div>
+    <div class="stat-card"><div class="stat-label">Burned today</div>  <div class="stat-val green" id="s-cal">0 <span style="font-size:14px;font-weight:400">kcal</span></div></div>
+    <div class="stat-card"><div class="stat-label">Target</div>        <div class="stat-val blue"  id="s-target">—</div></div>
+    <div class="stat-card"><div class="stat-label">Exercises</div>     <div class="stat-val"       id="s-ex">0</div></div>
+  </div>
+
+  <div class="split">
+
+    <!-- Workout library -->
+    <div class="workout-list">
+      <div class="workout-list-header">
+        <span>Workout list</span>
+        <span id="ex-count" style="font-size:11px;color:var(--text-3)"></span>
+      </div>
+      <div class="workout-search">
+        <i class="ti ti-search"></i>
+        <input type="text" id="ex-search-input" placeholder="Search workouts…"
+               oninput="window._workout.filterEx(this.value)"/>
+      </div>
+      <div class="workout-items" id="ex-items"></div>
+      <button class="add-workout-btn" onclick="window._workout.openAddModal()">
+        <i class="ti ti-plus"></i> Add custom workout
+      </button>
+    </div>
+
+    <!-- Log panel + logged list + weight -->
+    <div>
+      <div class="log-panel">
+        <div id="panel-empty" class="panel-placeholder">
+          <i class="ti ti-hand-click"></i>
+          <p>Select a workout from the list</p>
+        </div>
+        <div id="panel-form" style="display:none">
+          <div class="ex-header">
+            <div class="ex-header-icon"><i class="ti" id="p-icon"></i></div>
+            <div>
+              <div class="ex-title" id="p-name"></div>
+              <div class="ex-sub"   id="p-sub"></div>
+            </div>
+          </div>
+          <div class="field-row c2">
+            <div class="field" style="margin:0">
+              <label>Duration (min)</label>
+              <input type="number" id="f-time" min="1" placeholder="30" oninput="window._workout.recalcKcal()"/>
+            </div>
+            <div class="field" style="margin:0">
+              <label>Date</label>
+              <input type="date" id="f-date"/>
+            </div>
+          </div>
+          <div id="dist-field" class="field" style="display:none;margin-top:10px">
+            <label>Distance (km)</label>
+            <input type="number" id="f-dist" min="0" step="0.1" placeholder="5.0"/>
+          </div>
+          <div class="kcal-box">
+            <div>
+              <div class="lbl">Estimated calories burned</div>
+              <div class="note" id="p-note"></div>
+            </div>
+            <div class="kcal-val" id="p-kcal">—</div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="window._workout.addEntry()">
+            <i class="ti ti-plus"></i> Add to log
+          </button>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="section-label">Logged today</div>
+        <div id="w-log-list" class="log-card">
+          <p class="empty-msg">No exercises logged yet</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="card">
+          <div class="card-title"><i class="ti ti-scale"></i> Weight log</div>
+          <div class="field-row c2">
+            <div class="field" style="margin:0"><label>Weight (kg)</label><input type="number" id="wt-val" step="0.1" placeholder="65.0"/></div>
+            <div class="field" style="margin:0"><label>Date</label><input type="date" id="wt-date"/></div>
+          </div>
+          <button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="window._workout.addWeight()">
+            <i class="ti ti-check"></i> Save weight
+          </button>
+          <div id="weight-list"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /split -->
+
+  <div class="gap">
+    <div class="section-label">This week</div>
+    <div id="w-week-all"></div>
+  </div>
+
+</div><!-- /page-workout -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: MONEY
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-money" class="page">
+
+  <div class="stat-grid g3">
+    <div class="stat-card"><div class="stat-label">This month income</div>   <div class="stat-val green"  id="m-income">₩0</div></div>
+    <div class="stat-card"><div class="stat-label">This month expenses</div> <div class="stat-val danger" id="m-expense">₩0</div></div>
+    <div class="stat-card"><div class="stat-label">Balance</div>             <div class="stat-val"        id="m-balance">₩0</div></div>
+  </div>
+
+  <div class="split">
+
+    <!-- Add transaction form -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-plus"></i> Add transaction</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="money-type-btn income active" id="btn-income"
+                onclick="window._money.setMoneyType('income')">
+          <i class="ti ti-arrow-down"></i> Income
+        </button>
+        <button class="money-type-btn expense" id="btn-expense"
+                onclick="window._money.setMoneyType('expense')">
+          <i class="ti ti-arrow-up"></i> Expense
+        </button>
+      </div>
+
+      <div class="field">
+        <label>Description</label>
+        <input type="text" id="m-desc" placeholder="e.g. Groceries, Salary…"/>
+      </div>
+      <div class="field">
+        <label>Amount (₩)</label>
+        <input type="number" id="m-amt" min="0" step="100" placeholder="50000"/>
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="m-cat">
+          <option value="food">Food &amp; Dining</option>
+          <option value="transport">Transport</option>
+          <option value="shopping">Shopping</option>
+          <option value="health">Health</option>
+          <option value="education">Education / Tuition</option>
+          <option value="entertainment">Entertainment</option>
+          <option value="salary">Salary</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="m-date"/>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="window._money.addTransaction()">
+        <i class="ti ti-check"></i> Add transaction
+      </button>
+    </div>
+
+    <!-- Breakdown + recent list -->
+    <div>
+      <div class="card">
+        <div class="card-title"><i class="ti ti-chart-pie"></i> Spending breakdown</div>
+        <div id="m-breakdown"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><i class="ti ti-list"></i> Recent transactions</div>
+        <div id="m-list"></div>
+      </div>
+    </div>
+
+  </div><!-- /split -->
+
+</div><!-- /page-money -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: CLASSES
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-classes" class="page">
+
+  <div class="stat-grid g3">
+    <div class="stat-card"><div class="stat-label">Total credits</div><div class="stat-val"       id="c-credits">0</div></div>
+    <div class="stat-card"><div class="stat-label">Avg grade</div>    <div class="stat-val green" id="c-avg">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total tuition</div><div class="stat-val"       id="c-tuition">₩0</div></div>
+  </div>
+
+  <div class="split">
+
+    <!-- Add class form -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-plus"></i> Add / update class</div>
+
+      <div class="field"><label>Class name</label><input type="text" id="cl-name" placeholder="e.g. Organic Chemistry"/></div>
+      <div class="field-row c2">
+        <div class="field" style="margin:0"><label>Credits</label><input type="number" id="cl-credits" min="1" max="6" placeholder="3"/></div>
+        <div class="field" style="margin:0"><label>Color</label><input type="color" id="cl-color" value="#2d6a4f" style="height:36px;padding:4px"/></div>
+      </div>
+      <div class="field-row c2">
+        <div class="field" style="margin:0"><label>Schedule</label><input type="text" id="cl-schedule" placeholder="Mon/Wed 10:00"/></div>
+        <div class="field" style="margin:0"><label>Room</label><input type="text" id="cl-room" placeholder="Hall A-201"/></div>
+      </div>
+      <div class="field"><label>Professor</label><input type="text" id="cl-prof" placeholder="Prof. Kim"/></div>
+      <div class="field-row c2">
+        <div class="field" style="margin:0"><label>Current grade (%)</label><input type="number" id="cl-grade" min="0" max="100" placeholder="85"/></div>
+        <div class="field" style="margin:0"><label>Tuition (₩)</label><input type="number" id="cl-tuition" min="0" placeholder="500000"/></div>
+      </div>
+      <div class="field"><label>Notes</label><input type="text" id="cl-notes" placeholder="Assignment due Friday…"/></div>
+
+      <button class="btn btn-primary btn-full" onclick="window._classes.addClass()">
+        <i class="ti ti-plus"></i> Add / update class
+      </button>
+    </div>
+
+    <!-- Class cards -->
+    <div id="c-list"></div>
+
+  </div><!-- /split -->
+
+</div><!-- /page-classes -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PAGE: PROFILE
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-profile" class="page">
+  <div id="profilePanel"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     WORKOUT MODAL
+════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="ex-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">Add custom workout</div>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="m-name" placeholder="e.g. Jump rope"/>
+    </div>
+    <div class="field">
+      <label>MET value
+        <span style="font-size:11px;color:var(--text-3);font-weight:400">
+          (walking ≈ 3.5, cycling ≈ 8, running ≈ 9.5)
+        </span>
+      </label>
+      <input type="number" id="m-met" placeholder="5.0" step="0.5" min="1" max="20"/>
+    </div>
+    <div class="field">
+      <label>Has distance?</label>
+      <select id="m-dist">
+        <option value="0">No</option>
+        <option value="1">Yes</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="window._workout.closeModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="window._workout.saveModalEx()">
+        <i class="ti ti-check"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     JAVASCRIPT — ES modules
+     GitHub Pages serves static files; type="module" enables imports.
+════════════════════════════════════════════════════════════════════ -->
+<script type="module" src="js/app.js"></script>
+
+</body>
+</html>
